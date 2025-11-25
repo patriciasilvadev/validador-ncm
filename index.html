@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validador de NCM (Frontend)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* Variáveis CSS para Cores */
+        :root {
+            --primary-color: #007bff; /* Azul vibrante */
+            --secondary-color: #0056b3; /* Azul mais escuro para hover */
+            --background-light: #f9f9f9;
+            --container-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            /* Cores ajustadas para maior clareza */
+            --valid-bg: #d8fae7; /* Verde muito claro */
+            --valid-text: #008000; /* Verde escuro */
+            --invalid-bg: #fce2e2; /* Vermelho muito claro */
+            --invalid-text: #cc0000; /* Vermelho escuro */
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            background-color: var(--background-light);
+            color: #333;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: var(--container-shadow);
+        }
+
+        h1 {
+            color: var(--secondary-color);
+            text-align: center;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            color: #444;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+
+        /* Seção de Input e Upload */
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 30px;
+            padding: 25px;
+            border: 2px dashed #d1d9e6;
+            border-radius: 8px;
+            background-color: #fcfdff;
+        }
+
+        .input-section p {
+            font-size: 1.1em;
+            color: #555;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Estilização para o botão de Escolher Arquivo */
+        #excelFile {
+            display: none; /* Esconde o input original */
+        }
+
+        .custom-file-upload {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0, 123, 255, 0.3);
+            display: inline-block;
+            margin-right: 15px; /* Espaço entre o label e o nome do arquivo */
+        }
+
+        .custom-file-upload:hover {
+            background-color: var(--secondary-color);
+            box-shadow: 0 6px 8px rgba(0, 123, 255, 0.4);
+        }
+
+        .file-name {
+            font-style: italic;
+            color: #777;
+            margin-left: 10px;
+        }
+
+        /* Botão de Download */
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .controls button {
+            background-color: #28a745; /* Verde para Download */
+            color: white;
+            margin-top: 30px;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: background-color 0.3s;
+            box-shadow: 0 4px 6px rgba(40, 167, 69, 0.3);
+        }
+
+        .controls button:hover {
+            background-color: #1e7e34;
+        }
+
+        /* Tabela de Resultados */
+        #results-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden; /* Garante que os cantos arredondados sejam respeitados */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        #results-table th, #results-table td {
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 0.9em;
+        }
+
+        #results-table th {
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        /* CORREÇÕES PARA APLICAR COR TOTAL E REMOVER ZEBRADO CINZA */
+        
+        /* 1. Remove o zebrado cinza para que o status pinte a linha inteira */
+        #results-table tr:nth-child(even) {
+            background-color: transparent !important; 
+        }
+
+        /* 2. Aplica a cor de fundo em TODAS as células do status Válido */
+        .status-valid {
+            background-color: var(--valid-bg) !important; 
+        }
+        .status-valid td { 
+            background-color: var(--valid-bg) !important; /* Força o fundo em todos os TDs */
+        }
+        .status-valid td:nth-child(4) { 
+             color: var(--valid-text) !important;
+             font-weight: 600;
+        }
+
+        /* 3. Aplica a cor de fundo em TODAS as células do status Inválido */
+        .status-invalid {
+            background-color: var(--invalid-bg) !important;
+        }
+        .status-invalid td {
+            background-color: var(--invalid-bg) !important; /* Força o fundo em todos os TDs */
+        }
+        .status-invalid td:nth-child(4) { 
+            color: var(--invalid-text) !important;
+            font-weight: 600;
+        }
+
+        /* 4. Manter o hover forçando a cor em todos os TDs */
+        #results-table tr:hover td {
+            background-color: #eef3ff !important; /* Destaque ao passar o mouse */
+        }
+        
+        .hidden { display: none; }
+        
+        /* Mensagens */
+        #loading-message, #error-message {
+            font-weight: 600;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 4px;
+        }
+
+        #loading-message {
+            color: var(--primary-color);
+            background-color: #e9f7ff;
+        }
+
+        #error-message {
+            color: var(--invalid-text);
+            background-color: var(--invalid-bg);
+            border: 1px solid var(--invalid-text);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>✅ Validador de NCM</h1>
+    <p style="text-align: center; color: #666;">Validação de NCMs via upload de Excel contra a tabela TIPI vigente.</p>
+
+    <div class="input-section">
+        <p>
+            Selecione o arquivo Excel (.xlsx/.xls) e os NCMs serão validados automaticamente.
+        </p>
+
+        
+        <label for="excelFile" class="custom-file-upload">
+            Escolher Arquivo
+        </label>
+        <span id="file-selected-name" class="file-name">Nenhum arquivo selecionado</span>
+        
+        <input type="file" id="excelFile" accept=".xlsx, .xls" required>
+
+        <p id="loading-message" class="hidden">Carregando e Validando dados... Aguarde (pode levar alguns segundos).</p>
+        <p id="error-message" class="hidden"></p>
+    </div>
+
+    <div class="controls hidden" id="control-buttons">
+        <button onclick="downloadResults()">Baixar Resultados (Excel)</button>
+    </div>
+    
+    <div id="results-view" class="hidden">
+        <h2>📊 Resultados da Validação</h2>
+        <table id="results-table">
+            <thead>
+                <tr>
+                    <th>Produto</th>
+                    <th>NCM Original</th>
+                    <th>NCM Limpo (8 Dígitos)</th>
+                    <th>Status da Validação</th>
+                    <th>Observação</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+    // Variáveis globais
+    let NCM_MAP = null; // Mapeamento final, onde a chave é o NCM de 8 dígitos (ex: '84715010')
+    let originalData = []; // Armazena os dados do Excel lido com a coluna de status adicionada
+    const fileNameDisplay = document.getElementById('file-selected-name');
+
+    // Função principal para carregar o arquivo JSON e criar o Mapa de Busca
+    async function loadNCMTable() {
+        try {
+            document.getElementById('loading-message').textContent = 'Carregando Tabela NCM (3MB)...';
+            document.getElementById('loading-message').classList.remove('hidden');
+
+            const response = await fetch('ncm_tabela.json');
+            
+            if (!response.ok) {
+                throw new Error('Falha ao carregar ncm_tabela.json. Verifique o nome do arquivo.');
+            }
+
+            const ncmEstrutura = await response.json();
+            
+            // --- LÓGICA DE PROCESSAMENTO CORRIGIDA ---
+            NCM_MAP = {}; 
+            
+            for (const key in ncmEstrutura) {
+                if (key === 'Data_Ultima_Atualizacao_NCM') {
+                    continue; 
+                }
+                
+                const item = ncmEstrutura[key];
+                
+                for (const subKey in item) {
+                    const subItem = item[subKey];
+                    
+                    if (subItem && subItem.Codigo) {
+                        const ncmFinal = String(subItem.Codigo).replace(/[^0-9]/g, '');
+                        
+                        if (ncmFinal.length === 8) { 
+                           NCM_MAP[ncmFinal] = subItem;
+                        }
+                    }
+                }
+            }
+            // ------------------------------------
+
+            if (Object.keys(NCM_MAP).length === 0) {
+                throw new Error('Nenhum código NCM válido foi extraído da tabela JSON.');
+            }
+
+            document.getElementById('loading-message').textContent = `Tabela NCM carregada: ${Object.keys(NCM_MAP).length} códigos prontos.`;
+        } catch (error) {
+            console.error("Erro ao carregar a tabela NCM:", error);
+            const errorElement = document.getElementById('error-message');
+            errorElement.textContent = 'ERRO CRÍTICO: Não foi possível carregar ou processar a tabela NCM. (' + error.message + ')';
+            errorElement.classList.remove('hidden');
+            document.getElementById('loading-message').classList.add('hidden');
+        }
+    }
+
+    // Inicializa o carregamento da tabela NCM ao carregar a página
+    window.onload = loadNCMTable; 
+
+    // Listener para o upload do arquivo Excel
+    document.getElementById('excelFile').addEventListener('change', handleFile, false); 
+
+    // --- FUNÇÃO PARA LER O ARQUIVO EXCEL ---
+    function handleFile(e) {
+        if (!NCM_MAP) {
+            alert("Aguarde, a tabela NCM ainda está sendo carregada.");
+            e.target.value = null; // Limpa a seleção
+            fileNameDisplay.textContent = 'Nenhum arquivo selecionado';
+            return;
+        }
+
+        const files = e.target.files;
+        if (files.length === 0) {
+            fileNameDisplay.textContent = 'Nenhum arquivo selecionado';
+            return;
+        }
+
+        // Exibe o nome do arquivo selecionado
+        const file = files[0];
+        fileNameDisplay.textContent = file.name;
+
+        // Limpa e exibe mensagem de carregamento/processamento
+        document.getElementById('loading-message').textContent = 'Lendo e Validando o Excel...';
+        document.getElementById('loading-message').classList.remove('hidden');
+        document.getElementById('error-message').classList.add('hidden');
+        document.getElementById('control-buttons').classList.add('hidden');
+        document.getElementById('results-view').classList.add('hidden');
+        
+        const reader = new FileReader();
+
+        reader.onload = function(event) {
+            const data = new Uint8Array(event.target.result);
+            try {
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                
+                // Converte a planilha para um array de arrays de dados
+                const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                processData(json);
+
+                document.getElementById('loading-message').classList.add('hidden');
+                document.getElementById('control-buttons').classList.remove('hidden');
+                document.getElementById('results-view').classList.remove('hidden');
+            } catch (err) {
+                console.error("Erro ao ler o arquivo Excel:", err);
+                document.getElementById('error-message').textContent = 'Erro ao processar o arquivo Excel. Verifique o formato.';
+                document.getElementById('error-message').classList.remove('hidden');
+                document.getElementById('loading-message').classList.add('hidden');
+            }
+        };
+
+        reader.onerror = function(error) {
+             document.getElementById('error-message').textContent = 'Erro na leitura do arquivo: ' + error.message;
+             document.getElementById('error-message').classList.remove('hidden');
+             document.getElementById('loading-message').classList.add('hidden');
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+    
+    // --- FUNÇÃO PARA PROCESSAR E VALIDAR OS DADOS ---
+    function processData(data) {
+        // Assume que a primeira linha (índice 0) é o cabeçalho
+        const headers = data[0];
+        
+        // Tentativa de detectar as colunas de PRODUTO e NCM
+        const ncmColIndex = headers.findIndex(h => h && String(h).toUpperCase().includes('NCM'));
+        const produtoColIndex = headers.findIndex(h => h && (String(h).toUpperCase().includes('PRODUTO') || String(h).toUpperCase().includes('DESCRIÇÃO')));
+
+
+        if (ncmColIndex === -1) {
+            alert("Não foi possível encontrar a coluna 'NCM' no Excel. Certifique-se de que o cabeçalho está claro.");
+            document.getElementById('control-buttons').classList.add('hidden');
+            document.getElementById('results-view').classList.add('hidden');
+            return;
+        }
+
+        originalData = [];
+        const resultsBody = document.querySelector('#results-table tbody');
+        resultsBody.innerHTML = ''; // Limpa resultados anteriores
+
+        // Processa as linhas de dados (a partir do índice 1, após o cabeçalho)
+        for (let i = 1; i < data.length; i++) {
+            const row = data[i];
+            const originalNCM = String(row[ncmColIndex] || '').trim();
+            const originalProduto = produtoColIndex !== -1 ? String(row[produtoColIndex] || 'N/A').trim() : 'N/A';
+            
+            // Limpa o NCM para validação (remove pontos, traços, espaços)
+            const ncmLimpo = originalNCM.replace(/[^0-9]/g, '');
+
+            let status, observacao;
+
+            // 1. Validação de Formato (8 dígitos numéricos)
+            if (ncmLimpo.length !== 8 || !/^\d{8}$/.test(ncmLimpo)) {
+                status = 'Inválido';
+                observacao = 'Formato inválido. NCM deve ter 8 dígitos numéricos.';
+            } 
+            // 2. Validação de Existência (Consulta ao MAPA NCM)
+            else if (NCM_MAP.hasOwnProperty(ncmLimpo)) {
+                status = 'Válido';
+                // Adiciona a descrição completa para o download
+                observacao = 'NCM encontrado: ' + NCM_MAP[ncmLimpo].Descricao; 
+            } 
+            // 3. Inválido (Não Encontrado)
+            else {
+                status = 'Inválido';
+                observacao = 'NCM não encontrado na tabela vigente (TIPI).';
+            }
+
+            // Armazena para download
+            const resultRow = {
+                Produto: originalProduto,
+                'NCM Original': originalNCM,
+                'NCM Limpo (8 Dígitos)': ncmLimpo,
+                'Status da Validação': status,
+                Observação: observacao
+            };
+            originalData.push(resultRow);
+
+            // Cria a linha na tabela de visualização
+            const tr = resultsBody.insertRow();
+            // A classe é aplicada na linha para estilizar todos os TDs
+            tr.classList.add(status === 'Válido' ? 'status-valid' : 'status-invalid'); 
+
+            tr.insertCell().textContent = resultRow.Produto;
+            tr.insertCell().textContent = resultRow['NCM Original'];
+            tr.insertCell().textContent = resultRow['NCM Limpo (8 Dígitos)'];
+            tr.insertCell().textContent = resultRow['Status da Validação'];
+            // Exibe apenas uma parte da observação na tela
+            tr.insertCell().textContent = observacao.substring(0, 100) + (observacao.length > 100 ? '...' : ''); 
+        }
+    }
+
+    // --- FUNÇÃO PARA BAIXAR O ARQUIVO EXCEL ---
+    function downloadResults() {
+        if (originalData.length === 0) {
+            alert('Nenhum dado processado para baixar.');
+            return;
+        }
+        
+        const worksheet = XLSX.utils.json_to_sheet(originalData);
+        const workbook = XLSX.utils.book_new();
+        
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Resultados NCM");
+        
+        XLSX.writeFile(workbook, "Resultados_Validacao_NCM.xlsx");
+    }
+
+</script>
+
+<!--
+Download da Tabela NCM em arquivo.json
+
+https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/download-ncm-nomenclatura-comum-do-mercosul
+
+-->
+</body>
+</html>
