@@ -203,6 +203,26 @@
             background-color: var(--invalid-bg);
             border: 1px solid var(--invalid-text);
         }
+
+        /* Estilo para Resumo */
+        .summary-box {
+            background-color: #f0f8ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 6px;
+        }
+
+        .summary-box h3 {
+            color: var(--secondary-color);
+            margin-top: 0;
+        }
+
+        .summary-box p {
+            margin: 10px 0;
+            font-size: 1em;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -231,6 +251,9 @@
     <div class="controls hidden" id="control-buttons">
         <button onclick="downloadResults()">Baixar Resultados (Excel)</button>
     </div>
+
+    <div id="summary-results" class="summary-box hidden">
+    </div>
     
     <div id="results-view" class="hidden">
         <h2>📊 Resultados da Validação</h2>
@@ -256,6 +279,7 @@
     let NCM_MAP = null; // Mapeamento final, onde a chave é o NCM de 8 dígitos (ex: '84715010')
     let originalData = []; // Armazena os dados do Excel lido com a coluna de status adicionada
     const fileNameDisplay = document.getElementById('file-selected-name');
+    const summaryResultsDiv = document.getElementById('summary-results'); // Novo elemento
 
     // Função principal para carregar o arquivo JSON e criar o Mapa de Busca
     async function loadNCMTable() {
@@ -340,6 +364,7 @@
         document.getElementById('error-message').classList.add('hidden');
         document.getElementById('control-buttons').classList.add('hidden');
         document.getElementById('results-view').classList.add('hidden');
+        if (summaryResultsDiv) summaryResultsDiv.classList.add('hidden'); // Oculta resumo anterior
         
         const reader = new FileReader();
 
@@ -375,19 +400,35 @@
 
         reader.readAsArrayBuffer(file);
     }
-    
-    // --- FUNÇÃO PARA PROCESSAR E VALIDAR OS DADOS ---
+
+    // --- FUNÇÃO PARA PROCESSAR E VALIDAR OS DADOS (Com Zeros à Esquerda) ---
     function processData(data) {
         // Assume que a primeira linha (índice 0) é o cabeçalho
         const headers = data[0];
         
-        // Tentativa de detectar as colunas de PRODUTO e NCM
-        const ncmColIndex = headers.findIndex(h => h && String(h).toUpperCase().includes('NCM'));
-        const produtoColIndex = headers.findIndex(h => h && (String(h).toUpperCase().includes('PRODUTO') || String(h).toUpperCase().includes('DESCRIÇÃO')));
+        // Função auxiliar para encontrar índice de coluna com palavras-chave
+        function findColumnIndex(headerArray, keywords) {
+            return headerArray.findIndex(h => {
+                if (!h) return false;
+                const headerUpper = String(h).toUpperCase().trim();
+                return keywords.some(keyword => headerUpper.includes(keyword));
+            });
+        }
 
+        // Tentativa de detectar as colunas de NCM, PRODUTO e DESCRIÇÃO
+        const ncmColIndex = findColumnIndex(headers, ['NCM']);
+        const produtoColIndex = findColumnIndex(headers, ['PRODUTO', 'DESCRIÇÃO', 'DESCRICAO', 'DESC', 'NOME']);
+        const descricaoColIndex = findColumnIndex(headers, ['DESCRIÇÃO', 'DESCRICAO', 'DESC']);
 
         if (ncmColIndex === -1) {
             alert("Não foi possível encontrar a coluna 'NCM' no Excel. Certifique-se de que o cabeçalho está claro.");
+            document.getElementById('control-buttons').classList.add('hidden');
+            document.getElementById('results-view').classList.add('hidden');
+            return;
+        }
+
+        if (produtoColIndex === -1 && descricaoColIndex === -1) {
+            alert("Não foi possível encontrar as colunas 'Produto' ou 'Descrição' no Excel. Certifique-se de que o cabeçalho está claro.");
             document.getElementById('control-buttons').classList.add('hidden');
             document.getElementById('results-view').classList.add('hidden');
             return;
@@ -401,17 +442,37 @@
         for (let i = 1; i < data.length; i++) {
             const row = data[i];
             const originalNCM = String(row[ncmColIndex] || '').trim();
-            const originalProduto = produtoColIndex !== -1 ? String(row[produtoColIndex] || 'N/A').trim() : 'N/A';
+            
+            // Prioriza coluna de Produto, mas usa Descrição como fallback
+            let originalProduto = 'N/A';
+            if (produtoColIndex !== -1) {
+                originalProduto = String(row[produtoColIndex] || '').trim();
+            }
+            if ((originalProduto === '' || originalProduto === 'N/A') && descricaoColIndex !== -1) {
+                originalProduto = String(row[descricaoColIndex] || '').trim();
+            }
             
             // Limpa o NCM para validação (remove pontos, traços, espaços)
-            const ncmLimpo = originalNCM.replace(/[^0-9]/g, '');
+            let ncmLimpo = originalNCM.replace(/[^0-9]/g, '');
 
+            // AJUSTE: Completa com zeros à esquerda até 8 dígitos (se tiver entre 1 e 7 dígitos)
+            if (ncmLimpo.length > 0 && ncmLimpo.length < 8) {
+                ncmLimpo = ncmLimpo.padStart(8, '0');
+            }
+            
             let status, observacao;
 
             // 1. Validação de Formato (8 dígitos numéricos)
             if (ncmLimpo.length !== 8 || !/^\d{8}$/.test(ncmLimpo)) {
                 status = 'Inválido';
-                observacao = 'Formato inválido. NCM deve ter 8 dígitos numéricos.';
+                // A observação é mais específica após a tentativa de preenchimento
+                if (originalNCM === '') {
+                    observacao = 'NCM em branco ou não detectado.';
+                } else if (ncmLimpo.length > 8) {
+                    observacao = 'NCM excede 8 dígitos após a limpeza.';
+                } else {
+                    observacao = 'Formato inválido. NCM deve ter 8 dígitos numéricos.';
+                }
             } 
             // 2. Validação de Existência (Consulta ao MAPA NCM)
             else if (NCM_MAP.hasOwnProperty(ncmLimpo)) {
@@ -444,9 +505,39 @@
             tr.insertCell().textContent = resultRow['NCM Original'];
             tr.insertCell().textContent = resultRow['NCM Limpo (8 Dígitos)'];
             tr.insertCell().textContent = resultRow['Status da Validação'];
-            // Exibe apenas uma parte da observação na tela
             tr.insertCell().textContent = observacao.substring(0, 100) + (observacao.length > 100 ? '...' : ''); 
         }
+
+        // Chama a função de resumo após processar todos os dados
+        updateSummary();
+    }
+
+    // --- FUNÇÃO PARA ATUALIZAR O RESUMO E ESTATÍSTICAS ---
+    function updateSummary() {
+        // Garante que o elemento existe e há dados para processar
+        if (!summaryResultsDiv || originalData.length === 0) {
+            if (summaryResultsDiv) summaryResultsDiv.classList.add('hidden');
+            return;
+        }
+        
+        const totalProducts = originalData.length;
+
+        // Filtra e conta os NCMs Inválidos
+        const invalidProducts = originalData.filter(row => row['Status da Validação'] === 'Inválido').length;
+
+        // Calcula os NCMs Válidos
+        const validProducts = totalProducts - invalidProducts;
+
+        // Gera o conteúdo HTML do resumo
+        summaryResultsDiv.innerHTML = `
+            <h3>📈 Estatísticas da Validação</h3>
+            <p>✅ <strong>Total de Produtos Válidos:</strong> ${validProducts}</p>
+            <p>❌ <strong>Total de Produtos Inválidos:</strong> ${invalidProducts}</p>
+            <p>📦 <strong>Total Geral de Produtos:</strong> ${totalProducts}</p>
+        `;
+        
+        // Exibe o bloco de resumo
+        summaryResultsDiv.classList.remove('hidden');
     }
 
     // --- FUNÇÃO PARA BAIXAR O ARQUIVO EXCEL ---
@@ -465,7 +556,6 @@
     }
 
 </script>
-
 <!--
 Download da Tabela NCM em arquivo.json
 
